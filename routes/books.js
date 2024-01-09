@@ -62,6 +62,8 @@ router.get('/',async(req,res)=>{
         const modifiedBooks =await Promise.all(
             books.map(async book => {
               try {
+                  if(book.coverImagePath.length>0){
+            
                 const myFile = await s3.getObject({
                   Bucket: process.env.BUCKET_NAME,
                   Key: book.coverImagePath,
@@ -71,6 +73,7 @@ router.get('/',async(req,res)=>{
                   ...book.toObject(), // Using toObject() to get a plain JavaScript object
                   coverImagePath: fileContent, // Modify the coverImagePath property
                 };
+                  }
               } catch (error) {
                 console.error('Error fetching file from S3:', error);
                 return {
