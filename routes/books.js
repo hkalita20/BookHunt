@@ -1,5 +1,8 @@
 const express=require("express");
-const fs=require("fs");
+// const fs=require("fs");
+const AWS = require("aws-sdk");
+const s3 = new AWS.S3();
+const { v4: uuidv4 } = require('uuid');
 const multer=require("multer");
 const Author=require("../models/author");
 const Book = require("../models/book");
@@ -35,6 +38,19 @@ router.get('/',async(req,res)=>{
       }
     try {
         const books=await query.exec()
+        const modifiedBooks = books.map(async book =>{
+            const myFile = await s3.getObject({
+                Bucket: process.env.BUCKET_NAME,
+                Key: `books-covers/${book.coverImagePath}`,
+              }).promise();
+              const fileContent = JSON.parse(myFile.Body.toString());
+            book.coverImagePath = fileContent;
+            return {
+              ...book._doc,
+            };
+        });
+
+
         res.render('books/index',{
             books:books,
             searchOptions:req.query
@@ -54,7 +70,21 @@ router.get('/new',async(req,res)=>{
 
 //Create Author Route
 router.post('/',upload.single('cover'),async(req,res)=>{
-    const fileName = req.file != null ? req.file.filename : null
+    let fileName=null;
+    let fileContent=null;
+    if(req.file!=null ){
+         fileName = `${uuidv4()}.jpg`; 
+         fileContent = req.file.buffer; 
+        const uploadParams = {
+          Bucket: process.env.BUCKET_NAME,
+          Key: `books-covers/${fileName}`,
+          Body: fileContent,
+          ContentType: req.file.mimetype 
+        };
+        await s3.upload(uploadParams).promise();
+    }
+
+    //  fileName = req.file != null ? req.file.filename : null
     const book=new Book({
         title:req.body.title,
         author:req.body.author,
@@ -75,11 +105,24 @@ router.post('/',upload.single('cover'),async(req,res)=>{
 
 
 
-function removeBookCover(fileName){
-    fs.unlink(path.join(uploadPath,fileName),err=>{
-        if(err) console.log(err.message);
-    });
-}
+// function removeBookCover(fileName){
+//     fs.unlink(path.join(uploadPath,fileName),err=>{
+//         if(err) console.log(err.message);
+//     });
+// }
+
+async function removeBookCover(fileName) {
+    try {
+      const deleteParams = {
+        Bucket: process.env.BUCKET_NAME,
+        Key: `books-covers/${fileName}` // Adjust the path if needed
+      };
+      await s3.deleteObject(deleteParams).promise();
+      console.log(`Deleted cover image: ${fileName} from AWS S3`);
+    } catch (error) {
+      console.error(`Error deleting cover image ${fileName} from S3:`, error);
+    }
+  }
 
 
     async function renderNewPage(res,book,hashError=false){
